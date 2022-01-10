@@ -2,9 +2,9 @@ package etheye
 
 import (
 	"context"
+	"github.com/ethereum/go-ethereum"
 	"log"
-  
-        "github.com/ethereum/go-ethereum"
+
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -23,7 +23,7 @@ func (sn *Sniper) GetNewBlockHeader(erh ErrHandler, scn NewBlockHeaderHandler) {
 
 	for {
 		select {
-		case err := <-sub.Err():
+		case err = <-sub.Err():
 			erh(quit, err)
 		case header := <-headersFlow:
 			go scn(quit, sn.c, header)
@@ -45,30 +45,22 @@ func (sn *Sniper) GetNewBlock(erh ErrHandler, scn NewBlockHandler) {
 }
 
 func (sn *Sniper) GetNewEvent(erh ErrHandler, scn NewEventHandler, eq ethereum.FilterQuery) {
+	quit := make(chan bool)
 	logsFlow := make(chan types.Log)
 	sub, err := sn.c.SubscribeFilterLogs(context.Background(), eq, logsFlow)
 	if err != nil {
-		log.Fatal(err)
+		erh(quit, err)
 	}
 
-	quit := make(chan bool)
 	for {
 		select {
-		case err := <-sub.Err():
-			log.Fatal(err)
+		case err = <-sub.Err():
+			erh(quit, err)
+		case vlog := <-logsFlow:
+			go scn(quit, sn.c, vlog)
 		case <-quit:
 			sub.Unsubscribe()
 			return
-		case vlog := <-logsFlow:
-			go scn(quit, sn.c, vlog)
 		}
 	}
-}
-
-func NewSniper(rawurl string) (*Sniper, error) {
-	c, err := ethclient.Dial(rawurl)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return &Sniper{c}, nil
 }
